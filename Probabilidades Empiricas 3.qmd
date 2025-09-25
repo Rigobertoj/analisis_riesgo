@@ -1,0 +1,109 @@
+---
+title: "Probabilidades Empiricas 3"
+format: html
+editor: visual
+---
+
+## Probabilidades Empíricas 3
+
+El siguiente trabajo contesta una serie de preguntas relacionadas con el calculo de probabilidades del comportamiento de algunos activos considerando diferentes modelos tanto para el comportamiento del cambio en los precios como el precio mismo usando 100,000 simulaciones para el mismo.
+
+```{r}
+library(quantmod)
+```
+
+Determina la probabilidad de que el cambio en el precio de BIMBO sea negativo en los próximos 5 día. Usa una ventana de tiempo que se encuentre entre el 01 de febrero de 2024 y el primero de febrero del 2025.
+
+Primera punto. Usa la ecuación $S_t$ para determinar la probabilidad.
+
+$$
+P(S_{t+5} < S_t \mid t=\frac{5}{252})
+$$
+
+```{r}
+getSymbols("BIMBOA.MX", src="yahoo", from="2024-02-01", to="2025-02-02")
+```
+
+```{r}
+close_price <-  BIMBOA.MX$BIMBOA.MX.Close
+close_price
+```
+
+Como en este caso usaremos el modelo empírico se nos solicita utilizar el modelo $S_t$
+
+$$
+S_{t +1}= S_0e^{(\mu-\frac{1}{2}\sigma^2)\text{dt}+\sigma \text{dw}}
+$$
+
+donde
+
+$$
+S_{t+1} \sim N(S_0e^{\mu \text{dt}},(S^2e^{2\mu t}(e^{\sigma^2\text{dt}}-1))
+$$
+
+Por tanto tenemos que
+
+```{r}
+S0 <- tail(as.numeric(close_price), 1)
+
+log_returns <- diff(log(close_price))
+
+mu <- mean(log_returns, na.rm=TRUE)*252 
+sigma <- sd(log_returns, na.rm=TRUE)*sqrt(252)
+
+dt <- 1/252
+t <- seq(0,1,length.out=253)
+```
+
+```{r}
+sim <- 100000
+
+p_final <- numeric(sim)
+
+for (i in 1:sim){
+  
+  W <- c(0,cumsum(sqrt(dt)*rnorm(252)))
+  
+  St <- S0*exp((mu - 0.5*sigma^2)*t + sigma*W)
+  
+  p_final[i] <- St[5] 
+}
+
+```
+
+```{r}
+hist(p_final, n=100)
+```
+
+Con el desarrollo anterior podemos decir que la probabilidad de que el precio en 5 días sea menor que el de hoy es de
+
+```{r}
+mean(p_final>S0)
+```
+
+Por otro lado podemos utilizar
+
+```{r}
+# --- 10,000 trayectorias de precios (GBM) ---
+set.seed(123)
+
+n_paths  <- 10000
+n_steps  <- 252                 # 1 año bursátil
+t        <- seq(0, 1, length.out = n_steps + 1)  # asegura longitud consistente
+
+# Increments Wiener y su acumulado
+Z   <- matrix(rnorm(n_steps * n_paths), nrow = n_steps, ncol = n_paths)
+dW  <- sqrt(dt) * Z
+W   <- rbind(0, apply(dW, 2, cumsum))            # (n_steps+1) x n_paths
+
+# Trayectorias GBM
+St  <- S0 * exp( (mu - 0.5 * sigma^2) * t + sigma * W )  # (n_steps+1) x n_paths
+
+# Gráfico (base R): 10,000 líneas con transparencia
+op <- par(mar = c(4,4,2,1))
+matplot(0:n_steps, St, type = "l", lty = 1,
+        col = grDevices::adjustcolor("steelblue", alpha.f = 0.06),
+        xlab = "Días", ylab = "Precio simulado",
+        main = "BIMBOA.MX — 10,000 trayectorias (GBM)")
+par(op)
+```
